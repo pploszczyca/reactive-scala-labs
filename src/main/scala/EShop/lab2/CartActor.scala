@@ -37,7 +37,7 @@ class CartActor extends Actor {
   import CartActor._
 
   private val log = Logging(context.system, this)
-  val cartTimerDuration: FiniteDuration = 5 seconds
+  private val cartTimerDuration: FiniteDuration = 5 seconds
 
   private def scheduleTimer: Cancellable =
     system.scheduler.scheduleOnce(delay = cartTimerDuration) {
@@ -56,7 +56,7 @@ class CartActor extends Actor {
 
   def nonEmpty(cart: Cart, timer: Cancellable): Receive = LoggingReceive {
     case AddItem(item) =>
-      timer.cancel()
+      timer.cancel
       context become nonEmpty(
         cart = cart addItem item,
         timer = scheduleTimer,
@@ -82,7 +82,7 @@ class CartActor extends Actor {
     val newCart = cart removeItem item
 
     if (isElementRemoved) {
-      timer.cancel()
+      timer.cancel
       newCart.size match {
         case size if size > 0 => context become nonEmpty(
           cart = newCart,
