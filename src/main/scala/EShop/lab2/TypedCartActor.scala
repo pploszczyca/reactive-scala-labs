@@ -3,9 +3,9 @@ package EShop.lab2
 import akka.actor.Cancellable
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
 import akka.actor.typed.{ActorRef, Behavior}
-import scala.language.postfixOps
 
 import scala.concurrent.duration._
+import scala.language.postfixOps
 
 object TypedCartActor {
 
@@ -27,14 +27,79 @@ class TypedCartActor {
 
   val cartTimerDuration: FiniteDuration = 5 seconds
 
-  private def scheduleTimer(context: ActorContext[TypedCartActor.Command]): Cancellable = ???
+  private def scheduleTimer(context: ActorContext[TypedCartActor.Command]): Cancellable = {
+    context.system.scheduler.scheduleOnce(
+      delay = cartTimerDuration,
+      runnable = () => context.self ! ExpireCart
+    )(context.executionContext)
+  }
 
-  def start: Behavior[TypedCartActor.Command] = ???
+  def start: Behavior[TypedCartActor.Command] = empty
 
-  def empty: Behavior[TypedCartActor.Command] = ???
+  def empty: Behavior[TypedCartActor.Command] = Behaviors.receive((context, message) =>
+    message match {
+      case AddItem(item) =>
+        nonEmpty(
+          cart = Cart.empty addItem item,
+          timer = scheduleTimer(context = context)
+        )
+    }
+  )
 
-  def nonEmpty(cart: Cart, timer: Cancellable): Behavior[TypedCartActor.Command] = ???
+  def nonEmpty(cart: Cart, timer: Cancellable): Behavior[TypedCartActor.Command] = Behaviors.receive((context, message) =>
+    message match {
+      case AddItem(item) =>
+        timer.cancel
+        nonEmpty(
+          cart = cart addItem item,
+          timer = scheduleTimer(context = context),
+        )
 
-  def inCheckout(cart: Cart): Behavior[TypedCartActor.Command] = ???
+      case RemoveItem(item) =>
+        onRemoveItem(
+          cart = cart,
+          item = item,
+          timer = timer,
+          context = context,
+        )
 
+      case ExpireCart => empty
+
+      case StartCheckout => inCheckout(cart = cart)
+    }
+  )
+
+  private def onRemoveItem(cart: Cart,
+                           item: Any,
+                           timer: Cancellable,
+                           context: ActorContext[Command]): Behavior[Command] = {
+    val newCart = cart removeItem item
+
+    def isElementRemoved = cart.size != newCart.size
+
+    if (isElementRemoved) {
+      timer.cancel
+      newCart.size match {
+        case size if size > 0 => nonEmpty(
+          cart = newCart,
+          timer = scheduleTimer(context = context),
+        )
+        case size if size == 0 => empty
+      }
+    } else {
+      Behaviors.same
+    }
+  }
+
+  def inCheckout(cart: Cart): Behavior[TypedCartActor.Command] = Behaviors.receive((context, message) =>
+    message match {
+      case ConfirmCheckoutCancelled =>
+        nonEmpty(
+          cart = cart,
+          timer = scheduleTimer(context = context),
+        )
+
+      case ConfirmCheckoutClosed => empty
+    }
+  )
 }

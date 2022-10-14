@@ -1,6 +1,6 @@
 package EShop.lab2
 
-import akka.actor.{Actor, ActorRef, Cancellable, Props}
+import akka.actor.{Actor, ActorRef, ActorSystem, Cancellable, Props}
 import akka.event.{Logging, LoggingReceive}
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -10,21 +10,14 @@ import scala.language.postfixOps
 object CartActor {
 
   sealed trait Command
-
   case class AddItem(item: Any) extends Command
-
   case class RemoveItem(item: Any) extends Command
-
   case object ExpireCart extends Command
-
   case object StartCheckout extends Command
-
   case object ConfirmCheckoutCancelled extends Command
-
   case object ConfirmCheckoutClosed extends Command
 
   sealed trait Event
-
   case class CheckoutStarted(checkoutRef: ActorRef) extends Event
 
   def props = Props(new CartActor())
@@ -32,12 +25,12 @@ object CartActor {
 
 class CartActor extends Actor {
 
-  val system = akka.actor.ActorSystem("system")
+  val system: ActorSystem = akka.actor.ActorSystem("system")
 
   import CartActor._
 
   private val log = Logging(context.system, this)
-  private val cartTimerDuration: FiniteDuration = 5 seconds
+  val cartTimerDuration: FiniteDuration = 5 seconds
 
   private def scheduleTimer: Cancellable =
     system.scheduler.scheduleOnce(delay = cartTimerDuration) {
