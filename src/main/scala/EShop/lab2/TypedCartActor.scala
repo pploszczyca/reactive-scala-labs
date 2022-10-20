@@ -46,6 +46,10 @@ class TypedCartActor {
             cart = Cart.empty addItem item,
             timer = scheduleTimer(context = context)
           )
+
+        case GetItems(sender) =>
+          sender ! Cart.empty
+          Behaviors.same
       }
     )
 
@@ -77,6 +81,10 @@ class TypedCartActor {
           checkoutRef !  TypedCheckout.StartCheckout
           orderManagerRef ! OrderManager.ConfirmCheckoutStarted(checkoutRef = checkoutRef)
           inCheckout(cart = cart)
+
+        case GetItems(sender) =>
+          sender ! cart
+          Behaviors.same
       }
     )
 
