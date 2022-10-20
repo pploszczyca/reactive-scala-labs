@@ -88,16 +88,21 @@ class TypedCheckout(
             timer = schedulePaymentTimer(context = context),
           )
 
-        case CancelCheckout | ExpireCheckout => cancelled
+        case CancelCheckout | ExpireCheckout =>
+          cartActor ! TypedCartActor.ConfirmCheckoutCancelled
+          cancelled
       }
     )
 
   def processingPayment(timer: Cancellable): Behavior[TypedCheckout.Command] = Behaviors.receiveMessage {
     case ConfirmPaymentReceived =>
+      cartActor ! TypedCartActor.ConfirmCheckoutClosed
       timer.cancel
       closed
 
-    case CancelCheckout | ExpirePayment => cancelled
+    case CancelCheckout | ExpirePayment =>
+      cartActor ! TypedCartActor.ConfirmCheckoutCancelled
+      cancelled
   }
 
   def cancelled: Behavior[TypedCheckout.Command] = Behaviors.receiveMessage(_ => Behaviors.same)
