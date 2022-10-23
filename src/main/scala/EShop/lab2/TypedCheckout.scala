@@ -74,25 +74,32 @@ class TypedCheckout(
     Behaviors.receive((context, message) =>
       message match {
         case SelectPayment(paymentMethod, orderManagerRef) =>
-          timer.cancel
-          val payment = new Payment(
-            method = paymentMethod,
-            orderManager = orderManagerRef,
-            checkout = context.self,
-          )
-          val paymentRef = context.spawnAnonymous(payment.start)
-
-          orderManagerRef ! OrderManager.ConfirmPaymentStarted(paymentRef = paymentRef)
-
-          processingPayment(
-            timer = schedulePaymentTimer(context = context),
-          )
+          onSelectPayment(timer, context, paymentMethod, orderManagerRef)
 
         case CancelCheckout | ExpireCheckout =>
           cartActor ! TypedCartActor.ConfirmCheckoutCancelled
           cancelled
       }
     )
+
+  private def onSelectPayment(timer: Cancellable,
+                              context: ActorContext[Command],
+                              paymentMethod: String,
+                              orderManagerRef: ActorRef[OrderManager.Command]): Behavior[Command] = {
+    timer.cancel
+    val payment = new Payment(
+      method = paymentMethod,
+      orderManager = orderManagerRef,
+      checkout = context.self,
+    )
+    val paymentRef = context.spawnAnonymous(payment.start)
+
+    orderManagerRef ! OrderManager.ConfirmPaymentStarted(paymentRef = paymentRef)
+
+    processingPayment(
+      timer = schedulePaymentTimer(context = context),
+    )
+  }
 
   def processingPayment(timer: Cancellable): Behavior[TypedCheckout.Command] = Behaviors.receiveMessage {
     case ConfirmPaymentReceived =>

@@ -24,5 +24,4 @@ class Payment(
       checkout ! TypedCheckout.ConfirmPaymentReceived
       Behaviors.same
   }
-
 }
