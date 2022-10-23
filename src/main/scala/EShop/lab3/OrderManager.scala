@@ -23,9 +23,24 @@ object OrderManager {
 
 class OrderManager {
 
+  var paymentMapper: ActorRef[Payment.Event] = _
+  var typedCartMapper: ActorRef[TypedCartActor.Event] = _
+  var typedCheckoutMapper: ActorRef[TypedCheckout.Event] = _
+
   import OrderManager._
   def start: Behavior[OrderManager.Command] =
     Behaviors.setup { context =>
+      paymentMapper = context.messageAdapter[Payment.Event] {
+        case Payment.PaymentReceived => ConfirmPaymentReceived
+      }
+      typedCartMapper = context.messageAdapter[TypedCartActor.Event] {
+        case TypedCartActor.CheckoutStarted(checkoutRef) => ConfirmCheckoutStarted(checkoutRef)
+      }
+      typedCheckoutMapper = context.messageAdapter[TypedCheckout.Event] {
+        case TypedCheckout.PaymentStarted(paymentRef) => ConfirmPaymentStarted(paymentRef)
+        case TypedCheckout.CheckOutClosed => ConfirmCheckOutClosed
+      }
+
       val typedCartActor = context.spawnAnonymous(new TypedCartActor().empty)
 
       open(cartActor = typedCartActor)
@@ -47,7 +62,7 @@ class OrderManager {
           Behaviors.same
 
         case Buy(sender) =>
-          cartActor ! TypedCartActor.StartCheckout(orderManagerRef = context.self)
+          cartActor ! TypedCartActor.StartCheckout(cartEventHandler = typedCartMapper)
           inCheckout(
             cartActorRef = cartActor,
             senderRef = sender
@@ -72,7 +87,8 @@ class OrderManager {
           checkoutActorRef ! TypedCheckout.SelectDeliveryMethod(method = deliveryMethod)
           checkoutActorRef ! TypedCheckout.SelectPayment(
             payment = payment,
-            orderManagerRef = context.self.ref
+            orderManagerPaymentEventHandler = paymentMapper,
+            orderManagerCheckoutEventHandler = typedCheckoutMapper,
           )
           inPayment(senderRef = sender)
       }
