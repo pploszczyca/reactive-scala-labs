@@ -8,20 +8,22 @@ object Payment {
 
   sealed trait Command
   case object DoPayment extends Command
+  sealed trait Event
+  case object PaymentReceived extends Event
 }
 
 class Payment(
   method: String,
-  orderManager: ActorRef[OrderManager.Command],
-  checkout: ActorRef[TypedCheckout.Command]
+  orderManagerEventHandler: ActorRef[Payment.Event],
+  checkoutEventHandler: ActorRef[Payment.Event]
 ) {
 
   import Payment._
 
   def start: Behavior[Payment.Command] = Behaviors.receiveMessage {
     case DoPayment =>
-      orderManager ! OrderManager.ConfirmPaymentReceived
-      checkout ! TypedCheckout.ConfirmPaymentReceived
+      orderManagerEventHandler ! PaymentReceived
+      checkoutEventHandler ! PaymentReceived
       Behaviors.same
   }
 }

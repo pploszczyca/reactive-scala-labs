@@ -56,13 +56,13 @@ class TypedCartTest
     // Given
     val item              = "item"
     val typedCart         = testKit.spawn(new TypedCartActor().start).ref
-    val orderManagerProbe = testKit.createTestProbe[OrderManager.Command]()
+    val cartEventHandlerProbe = testKit.createTestProbe[TypedCartActor.Event]()
 
     // When
     typedCart tell AddItem(item = item)
-    typedCart tell StartCheckout(orderManagerRef = orderManagerProbe.ref)
+    typedCart tell StartCheckout(cartEventHandler = cartEventHandlerProbe.ref)
 
     // Then
-    orderManagerProbe.expectMessageType[OrderManager.ConfirmCheckoutStarted]
+    cartEventHandlerProbe.expectMessageType[TypedCartActor.CheckoutStarted]
   }
 }

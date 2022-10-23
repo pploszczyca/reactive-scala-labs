@@ -14,7 +14,7 @@ object TypedCartActor {
   case class AddItem(item: Any)                                             extends Command
   case class RemoveItem(item: Any)                                          extends Command
   case object ExpireCart                                                    extends Command
-  case class StartCheckout(orderManagerRef: ActorRef[OrderManager.Command]) extends Command
+  case class StartCheckout(cartEventHandler: ActorRef[TypedCartActor.Event]) extends Command
   case object ConfirmCheckoutCancelled                                      extends Command
   case object ConfirmCheckoutClosed                                         extends Command
   case class GetItems(sender: ActorRef[Cart])                               extends Command // command made to make testing easier
@@ -73,13 +73,13 @@ class TypedCartActor {
 
         case ExpireCart => empty
 
-        case StartCheckout(orderManagerRef) =>
+        case StartCheckout(cartEventHandler) =>
           val checkout = new TypedCheckout(
             cartActor = context.self
           )
           val checkoutRef = context.spawnAnonymous(checkout.start)
           checkoutRef !  TypedCheckout.StartCheckout
-          orderManagerRef ! OrderManager.ConfirmCheckoutStarted(checkoutRef = checkoutRef)
+          cartEventHandler ! TypedCartActor.CheckoutStarted(checkoutRef = checkoutRef)
           inCheckout(cart = cart)
 
         case GetItems(sender) =>
