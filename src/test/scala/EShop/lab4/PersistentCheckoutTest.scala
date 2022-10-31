@@ -278,6 +278,7 @@ class PersistentCheckoutTest
 
     val restartedResult = eventSourcedTestKit.restart()
     restartedResult.state.isInstanceOf[SelectingDelivery] shouldBe true
+    restartedResult.state.timerOpt.get.isCancelled shouldBe false
 
     Thread.sleep(1500)
 

@@ -83,7 +83,7 @@ class PersistentCartActor {
       state.timerOpt.foreach(_.cancel())
       event match {
         case CheckoutStarted(_)        => InCheckout(cart = state.cart)
-        case ItemAdded(item)           => NonEmpty(cart = Cart.empty addItem item, timer = scheduleTimer(context = context))
+        case ItemAdded(item)           => NonEmpty(cart = state.cart addItem item, timer = scheduleTimer(context = context))
         case ItemRemoved(item)         => NonEmpty(cart = Cart.empty removeItem item, timer = scheduleTimer(context = context))
         case CartEmptied | CartExpired => Empty
         case CheckoutClosed            => Empty
