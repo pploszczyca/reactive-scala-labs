@@ -5,7 +5,8 @@ import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
 import akka.actor.typed.{ActorRef, Behavior}
 
 import scala.concurrent.duration._
-import EShop.lab3.OrderManager
+import EShop.lab3.{OrderManager, Payment}
+
 import scala.language.postfixOps
 
 object TypedCheckout {
@@ -72,22 +73,43 @@ class TypedCheckout(
   def selectingPaymentMethod(timer: Cancellable): Behavior[TypedCheckout.Command] =
     Behaviors.receive((context, message) =>
       message match {
-        case SelectPayment(payment) =>
-          timer.cancel
-          processingPayment(
-            timer = schedulePaymentTimer(context = context),
-          )
+        case SelectPayment(paymentMethod, orderManagerRef) =>
+          onSelectPayment(timer, context, paymentMethod, orderManagerRef)
 
-        case CancelCheckout | ExpireCheckout => cancelled
+        case CancelCheckout | ExpireCheckout =>
+          cartActor ! TypedCartActor.ConfirmCheckoutCancelled
+          cancelled
       }
     )
 
+  private def onSelectPayment(timer: Cancellable,
+                              context: ActorContext[Command],
+                              paymentMethod: String,
+                              orderManagerRef: ActorRef[OrderManager.Command]): Behavior[Command] = {
+    timer.cancel
+    val payment = new Payment(
+      method = paymentMethod,
+      orderManager = orderManagerRef,
+      checkout = context.self,
+    )
+    val paymentRef = context.spawnAnonymous(payment.start)
+
+    orderManagerRef ! OrderManager.ConfirmPaymentStarted(paymentRef = paymentRef)
+
+    processingPayment(
+      timer = schedulePaymentTimer(context = context),
+    )
+  }
+
   def processingPayment(timer: Cancellable): Behavior[TypedCheckout.Command] = Behaviors.receiveMessage {
     case ConfirmPaymentReceived =>
+      cartActor ! TypedCartActor.ConfirmCheckoutClosed
       timer.cancel
       closed
 
-    case CancelCheckout | ExpirePayment => cancelled
+    case CancelCheckout | ExpirePayment =>
+      cartActor ! TypedCartActor.ConfirmCheckoutCancelled
+      cancelled
   }
 
   def cancelled: Behavior[TypedCheckout.Command] = Behaviors.receiveMessage(_ => Behaviors.same)

@@ -21,7 +21,7 @@ object EShopMain {
     val checkout = system.actorOf(Props[Checkout], "checkout")
     checkout ! StartCheckout
     checkout ! SelectDeliveryMethod("Paczkomat")
-    checkout ! SelectPayment("BLIK")
+//    checkout ! SelectPayment("BLIK", )
     checkout ! ConfirmPaymentReceived
 
     Await.result(system.whenTerminated, Duration.Inf)

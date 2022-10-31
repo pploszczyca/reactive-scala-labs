@@ -1,12 +1,12 @@
 package EShop.lab2
 
+import EShop.lab3.OrderManager
 import akka.actor.Cancellable
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
 import akka.actor.typed.{ActorRef, Behavior}
 
 import scala.concurrent.duration._
 import scala.language.postfixOps
-import EShop.lab3.OrderManager
 
 object TypedCartActor {
 
@@ -38,43 +38,62 @@ class TypedCartActor {
 
   def start: Behavior[TypedCartActor.Command] = empty
 
-  def empty: Behavior[TypedCartActor.Command] = Behaviors.receive((context, message) =>
-    message match {
-      case AddItem(item) =>
-        nonEmpty(
-          cart = Cart.empty addItem item,
-          timer = scheduleTimer(context = context)
-        )
-    }
-  )
+  def empty: Behavior[TypedCartActor.Command] =
+    Behaviors.receive((context, message) =>
+      message match {
+        case AddItem(item) =>
+          nonEmpty(
+            cart = Cart.empty addItem item,
+            timer = scheduleTimer(context = context)
+          )
 
-  def nonEmpty(cart: Cart, timer: Cancellable): Behavior[TypedCartActor.Command] = Behaviors.receive((context, message) =>
-    message match {
-      case AddItem(item) =>
-        timer.cancel
-        nonEmpty(
-          cart = cart addItem item,
-          timer = scheduleTimer(context = context),
-        )
+        case GetItems(sender) =>
+          sender ! Cart.empty
+          Behaviors.same
+      }
+    )
 
-      case RemoveItem(item) =>
-        onRemoveItem(
-          cart = cart,
-          item = item,
-          timer = timer,
-          context = context,
-        )
+  def nonEmpty(cart: Cart, timer: Cancellable): Behavior[TypedCartActor.Command] =
+    Behaviors.receive((context, message) =>
+      message match {
+        case AddItem(item) =>
+          timer.cancel
+          nonEmpty(
+            cart = cart addItem item,
+            timer = scheduleTimer(context = context)
+          )
 
-      case ExpireCart => empty
+        case RemoveItem(item) =>
+          onRemoveItem(
+            cart = cart,
+            item = item,
+            timer = timer,
+            context = context
+          )
 
-      case StartCheckout => inCheckout(cart = cart)
-    }
-  )
+        case ExpireCart => empty
 
-  private def onRemoveItem(cart: Cart,
-                           item: Any,
-                           timer: Cancellable,
-                           context: ActorContext[Command]): Behavior[Command] = {
+        case StartCheckout(orderManagerRef) =>
+          val checkout = new TypedCheckout(
+            cartActor = context.self
+          )
+          val checkoutRef = context.spawnAnonymous(checkout.start)
+          checkoutRef !  TypedCheckout.StartCheckout
+          orderManagerRef ! OrderManager.ConfirmCheckoutStarted(checkoutRef = checkoutRef)
+          inCheckout(cart = cart)
+
+        case GetItems(sender) =>
+          sender ! cart
+          Behaviors.same
+      }
+    )
+
+  private def onRemoveItem(
+    cart: Cart,
+    item: Any,
+    timer: Cancellable,
+    context: ActorContext[Command]
+  ): Behavior[Command] = {
     val newCart = cart removeItem item
 
     def isElementRemoved = cart.size != newCart.size
@@ -82,26 +101,27 @@ class TypedCartActor {
     if (isElementRemoved) {
       timer.cancel
       newCart.size match {
-        case size if size > 0 => nonEmpty(
-          cart = newCart,
-          timer = scheduleTimer(context = context),
-        )
+        case size if size > 0 =>
+          nonEmpty(
+            cart = newCart,
+            timer = scheduleTimer(context = context)
+          )
         case size if size == 0 => empty
       }
-    } else {
+    } else
       Behaviors.same
-    }
   }
 
-  def inCheckout(cart: Cart): Behavior[TypedCartActor.Command] = Behaviors.receive((context, message) =>
-    message match {
-      case ConfirmCheckoutCancelled =>
-        nonEmpty(
-          cart = cart,
-          timer = scheduleTimer(context = context),
-        )
+  def inCheckout(cart: Cart): Behavior[TypedCartActor.Command] =
+    Behaviors.receive((context, message) =>
+      message match {
+        case ConfirmCheckoutCancelled =>
+          nonEmpty(
+            cart = cart,
+            timer = scheduleTimer(context = context)
+          )
 
-      case ConfirmCheckoutClosed => empty
-    }
-  )
+        case ConfirmCheckoutClosed => empty
+      }
+    )
 }
