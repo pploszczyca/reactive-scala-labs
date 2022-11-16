@@ -1,5 +1,6 @@
 package EShop.lab4
 
+import EShop.lab2.Cart
 import EShop.lab3.OrderManager
 import akka.actor.testkit.typed.scaladsl.ScalaTestWithActorTestKit
 import akka.persistence.testkit.scaladsl.EventSourcedBehaviorTestKit
@@ -157,5 +158,70 @@ class PersistentCartActorTest
 
     resultAdd2.hasNoEvents shouldBe true
     resultAdd2.state shouldBe Empty
+  }
+
+  it should "contain item that was added before restarting" in {
+    val book = "Hamlet"
+    val result = eventSourcedTestKit.runCommand(AddItem(book))
+
+    result.event.isInstanceOf[ItemAdded] shouldBe true
+    result.state.isInstanceOf[NonEmpty] shouldBe true
+
+    val restartedResult = eventSourcedTestKit.restart()
+    restartedResult.state.cart shouldBe Cart(items = Seq(book))
+  }
+
+  it should "add another item after restarting" in {
+    val book = "Hamlet"
+    val secondItem = "secondItem"
+    val result = eventSourcedTestKit.runCommand(AddItem(book))
+
+    result.event.isInstanceOf[ItemAdded] shouldBe true
+    result.state.isInstanceOf[NonEmpty] shouldBe true
+
+    val restartedResult = eventSourcedTestKit.restart()
+    restartedResult.state.cart shouldBe Cart(items = Seq(book))
+
+    val secondResult = eventSourcedTestKit.runCommand(AddItem(secondItem))
+    secondResult.event.isInstanceOf[ItemAdded] shouldBe true
+    secondResult.state.isInstanceOf[NonEmpty] shouldBe true
+    secondResult.state.cart shouldBe Cart(items = Seq(book, secondItem))
+  }
+
+  it should "be empty after adding new item and removing it after that and restarting" in {
+    val resultAdd = eventSourcedTestKit.runCommand(AddItem("Storm"))
+
+    resultAdd.event.isInstanceOf[ItemAdded] shouldBe true
+    resultAdd.state.isInstanceOf[NonEmpty] shouldBe true
+
+    val resultRemove = eventSourcedTestKit.runCommand(RemoveItem("Storm"))
+
+    resultRemove.event shouldBe CartEmptied
+    resultRemove.state shouldBe Empty
+
+    val restartedResult = eventSourcedTestKit.restart()
+    restartedResult.state shouldBe Empty
+  }
+
+  it should "cancel checkout properly after restarting actor" in {
+    val resultAdd = eventSourcedTestKit.runCommand(AddItem("Cymbelin"))
+
+    resultAdd.event.isInstanceOf[ItemAdded] shouldBe true
+    resultAdd.state.isInstanceOf[NonEmpty] shouldBe true
+
+    val resultStartCheckout =
+      eventSourcedTestKit.runCommand(StartCheckout(testKit.createTestProbe[OrderManager.Command]().ref))
+
+    resultStartCheckout.event.isInstanceOf[CheckoutStarted] shouldBe true
+    resultStartCheckout.state.isInstanceOf[InCheckout] shouldBe true
+
+    val restartedResult = eventSourcedTestKit.restart()
+    restartedResult.state.isInstanceOf[InCheckout] shouldBe true
+
+    val resultCancelCheckout =
+      eventSourcedTestKit.runCommand(ConfirmCheckoutCancelled)
+
+    resultCancelCheckout.event shouldBe CheckoutCancelled
+    resultCancelCheckout.state.isInstanceOf[NonEmpty] shouldBe true
   }
 }
