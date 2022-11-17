@@ -58,5 +58,4 @@ class HelloWorldAkkaHttpServer extends JsonSupport {
     val bindingFuture = Http().newServerAt("localhost", port).bind(routes)
     Await.ready(system.whenTerminated, Duration.Inf)
   }
-
 }
