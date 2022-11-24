@@ -36,24 +36,25 @@ class OrderManager {
   def uninitialized: Behavior[OrderManager.Command] = Behaviors.same
 
   def open(cartActor: ActorRef[TypedCartActor.Command]): Behavior[OrderManager.Command] =
-    Behaviors.receive((context, message) =>
-      message match {
-        case AddItem(id, sender) =>
-          cartActor ! TypedCartActor.AddItem(id)
-          sender ! Done
-          Behaviors.same
+    Behaviors.receive(
+      (context, message) =>
+        message match {
+          case AddItem(id, sender) =>
+            cartActor ! TypedCartActor.AddItem(id)
+            sender ! Done
+            Behaviors.same
 
-        case RemoveItem(id, sender) =>
-          cartActor ! TypedCartActor.RemoveItem(id)
-          sender ! Done
-          Behaviors.same
+          case RemoveItem(id, sender) =>
+            cartActor ! TypedCartActor.RemoveItem(id)
+            sender ! Done
+            Behaviors.same
 
-        case Buy(sender) =>
-          cartActor ! TypedCartActor.StartCheckout(orderManagerRef = context.self)
-          inCheckout(
-            cartActorRef = cartActor,
-            senderRef = sender
-          )
+          case Buy(sender) =>
+            cartActor ! TypedCartActor.StartCheckout(orderManagerRef = context.self)
+            inCheckout(
+              cartActorRef = cartActor,
+              senderRef = sender
+            )
       }
     )
 
@@ -68,15 +69,16 @@ class OrderManager {
     }
 
   def inCheckout(checkoutActorRef: ActorRef[TypedCheckout.Command]): Behavior[OrderManager.Command] =
-    Behaviors.receive((context, message) =>
-      message match {
-        case SelectDeliveryAndPaymentMethod(deliveryMethod, payment, sender) =>
-          checkoutActorRef ! TypedCheckout.SelectDeliveryMethod(method = deliveryMethod)
-          checkoutActorRef ! TypedCheckout.SelectPayment(
-            payment = payment,
-            orderManagerRef = context.self.ref
-          )
-          inPayment(senderRef = sender)
+    Behaviors.receive(
+      (context, message) =>
+        message match {
+          case SelectDeliveryAndPaymentMethod(deliveryMethod, payment, sender) =>
+            checkoutActorRef ! TypedCheckout.SelectDeliveryMethod(method = deliveryMethod)
+            checkoutActorRef ! TypedCheckout.SelectPayment(
+              payment = payment,
+              orderManagerRef = context.self.ref
+            )
+            inPayment(senderRef = sender)
       }
     )
 

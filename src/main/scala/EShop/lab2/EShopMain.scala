@@ -8,7 +8,6 @@ import akka.actor.{ActorSystem, Props}
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 
-
 object EShopMain {
   def main(args: Array[String]): Unit = {
     val system = ActorSystem("EShop")

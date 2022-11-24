@@ -1,0 +1,20 @@
+[
+  {
+    "brand": "Slim-Fast",
+    "productKeyWords": [
+      "Snack"
+    ]
+  },
+  {
+    "brand": "Starbucks",
+    "productKeyWords": [
+      "Coffee"
+    ]
+  },
+  {
+    "brand": "Coca-Cola",
+    "productKeyWords": [
+      "Coke"
+    ]
+  }
+]

@@ -1,8 +1,8 @@
 package EShop.lab5
 
 import akka.Done
-import akka.actor.typed.receptionist.Receptionist
-import akka.actor.typed.scaladsl.AskPattern.{Askable, schedulerFromActorSystem}
+import akka.actor.typed.javadsl.Routers
+import akka.actor.typed.scaladsl.AskPattern.{schedulerFromActorSystem, Askable}
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
@@ -10,7 +10,6 @@ import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import akka.util.Timeout
-import com.typesafe.config.ConfigFactory
 import spray.json.{DefaultJsonProtocol, JsString, JsValue, JsonFormat, RootJsonFormat}
 
 import java.net.URI
@@ -31,7 +30,7 @@ trait ProductCatalogJsonSupport extends SprayJsonSupport with DefaultJsonProtoco
     override def read(json: JsValue): URI =
       json match {
         case JsString(url) => new URI(url)
-        case _ => throw new RuntimeException("Parsing exception")
+        case _             => throw new RuntimeException("Parsing exception")
       }
   }
 
@@ -48,6 +47,8 @@ trait ProductCatalogJsonSupport extends SprayJsonSupport with DefaultJsonProtoco
 
 class ProductCatalogAkkaHttpServer extends ProductCatalogJsonSupport {
   private implicit val system: ActorSystem[Nothing] = ActorSystem[Nothing](Behaviors.empty, "ProductCatalog")
+  private val workersPool =
+    system.systemActorOf(Routers.pool(3)(ProductCatalog(new SearchService())), "productWorkersRouter")
 
   implicit val timeout: Timeout = 3.seconds
 
@@ -55,18 +56,10 @@ class ProductCatalogAkkaHttpServer extends ProductCatalogJsonSupport {
     path("search") {
       get {
         entity(as[ProductCatalogAkkaHttpServer.SearchRequest]) { searchRequest =>
-          val listings: Future[Receptionist.Listing] = system.receptionist
-            .ask((ref: ActorRef[Receptionist.Listing]) =>
-              Receptionist.Find(ProductCatalog.ProductCatalogServiceKey, ref)
-            )
-
-          val listingResult: Receptionist.Listing = Await.result(listings, Duration.Inf)
-
-          val items: Future[ProductCatalog.Ack] = listingResult
-            .allServiceInstances(ProductCatalog.ProductCatalogServiceKey)
-            .head
-            .ask((ref: ActorRef[ProductCatalog.Ack]) =>
-              ProductCatalog.GetItems(searchRequest.brand, searchRequest.productKeyWords, ref)
+          val items: Future[ProductCatalog.Ack] = workersPool
+            .ask(
+              (ref: ActorRef[ProductCatalog.Ack]) =>
+                ProductCatalog.GetItems(searchRequest.brand, searchRequest.productKeyWords, ref)
             )
 
           onSuccess(items) {
