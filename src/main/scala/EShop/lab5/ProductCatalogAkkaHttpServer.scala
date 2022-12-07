@@ -1,8 +1,8 @@
 package EShop.lab5
 
 import akka.Done
-import akka.actor.typed.javadsl.Routers
-import akka.actor.typed.scaladsl.AskPattern.{schedulerFromActorSystem, Askable}
+import akka.actor.typed.javadsl.{GroupRouter, Routers}
+import akka.actor.typed.scaladsl.AskPattern.Askable
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
@@ -10,11 +10,13 @@ import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import akka.util.Timeout
+import com.typesafe.config.ConfigFactory
 import spray.json.{DefaultJsonProtocol, JsString, JsValue, JsonFormat, RootJsonFormat}
 
 import java.net.URI
 import scala.concurrent.duration.{Duration, DurationInt}
 import scala.concurrent.{Await, Future}
+import scala.util.Try
 
 object ProductCatalogAkkaHttpServer {
   case class SearchRequest(brand: String, productKeyWords: List[String])
@@ -45,21 +47,53 @@ trait ProductCatalogJsonSupport extends SprayJsonSupport with DefaultJsonProtoco
   )
 }
 
-class ProductCatalogAkkaHttpServer extends ProductCatalogJsonSupport {
-  private implicit val system: ActorSystem[Nothing] = ActorSystem[Nothing](Behaviors.empty, "ProductCatalog")
-  private val workersPool =
-    system.systemActorOf(Routers.pool(3)(ProductCatalog(new SearchService())), "productWorkersRouter")
+class ProductCatalogWorkersNode() {
+  private val instancesPerNode = 3
+  private val config           = ConfigFactory.load()
 
-  implicit val timeout: Timeout = 3.seconds
+  private val system = ActorSystem[Nothing](
+    Behaviors.empty,
+    "ProductCatalogCluster",
+    config
+  )
+
+  for (i <- 0 to instancesPerNode) system.systemActorOf(ProductCatalog(new SearchService()), s"worker$i")
+
+  def terminate(): Unit =
+    system.terminate()
+}
+
+class ProductCatalogAkkaHttpServer extends ProductCatalogJsonSupport {
+  private val config = ConfigFactory.load()
+  private val httpWorkersNodeCount = 3
+
+  private implicit val system = ActorSystem[Nothing](
+    Behaviors.empty,
+    "ProductCatalogCluster",
+    config
+      .getConfig("cluster-default")
+  )
+//  private val workersPool =
+//    system.systemActorOf(Routers.pool(3)(ProductCatalog(new SearchService())), "productWorkersRouter")
+
+  implicit val scheduler = system.scheduler
+  implicit val executionContext = system.executionContext
+
+  val workersNodes: Seq[ProductCatalogWorkersNode] =
+    for (_ <- 0 to httpWorkersNodeCount) yield new ProductCatalogWorkersNode()
+  private val group: GroupRouter[ProductCatalog.Query] = Routers.group[ProductCatalog.Query](ProductCatalog.ProductCatalogServiceKey)
+  private val workers: ActorRef[ProductCatalog.Query] =
+    system.systemActorOf(group, "clusterProductWorkerRouter")
+
+  implicit val timeout: Timeout = 5.seconds
 
   def routes(): Route = {
     path("search") {
       get {
         entity(as[ProductCatalogAkkaHttpServer.SearchRequest]) { searchRequest =>
-          val items: Future[ProductCatalog.Ack] = workersPool
-            .ask(
-              (ref: ActorRef[ProductCatalog.Ack]) =>
-                ProductCatalog.GetItems(searchRequest.brand, searchRequest.productKeyWords, ref)
+          val items: Future[ProductCatalog.Ack] = workers
+            .ask((ref: ActorRef[ProductCatalog.Ack]) =>
+              ProductCatalog.GetItems(searchRequest.brand, searchRequest.productKeyWords, ref)
             )
 
           onSuccess(items) {
@@ -80,5 +114,21 @@ class ProductCatalogAkkaHttpServer extends ProductCatalogJsonSupport {
 }
 
 object ProductCatalogAkkaHttpServerApp extends App {
-  new ProductCatalogAkkaHttpServer().start(10001)
+  val port = Try(args(0).toInt).getOrElse(10001)
+
+  new ProductCatalogAkkaHttpServer().start(port)
+}
+
+object ClusterNodeApp extends App {
+  private val config = ConfigFactory.load()
+
+  val system = ActorSystem[Nothing](
+    Behaviors.empty,
+    "ProductCatalogCluster",
+    config
+      .getConfig(Try(args(0)).getOrElse("seed-node1"))
+      .withFallback(config)
+  )
+
+  Await.ready(system.whenTerminated, Duration.Inf)
 }
