@@ -9,7 +9,10 @@ import scala.concurrent.duration._
 
 class ProductCatalogAkkaHttpServerGatlingTest extends Simulation {
   val httpProtocol: HttpProtocolBuilder = http //values here are adjusted to cluster_demo.sh script
-    .baseUrl("http://localhost:10001")
+    .baseUrls("http://localhost:10001",
+      "http://localhost:10002",
+      "http://localhost:10003",
+    )
     .acceptHeader("text/plain,text/html,application/json,application/xml;")
     .userAgentHeader("Mozilla/5.0 (Windows NT 5.1; rv:31.0) Gecko/20100101 Firefox/31.0")
 
@@ -26,6 +29,6 @@ class ProductCatalogAkkaHttpServerGatlingTest extends Simulation {
     .pause(1)
 
   setUp(
-    scn.inject(rampUsers(100).during(1.minutes))
+    scn.inject(rampUsers(20000).during(1.minutes))
   ).protocols(httpProtocol)
 }

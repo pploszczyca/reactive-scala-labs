@@ -47,41 +47,23 @@ trait ProductCatalogJsonSupport extends SprayJsonSupport with DefaultJsonProtoco
   )
 }
 
-class ProductCatalogWorkersNode() {
-  private val instancesPerNode = 3
-  private val config           = ConfigFactory.load()
-
-  private val system = ActorSystem[Nothing](
-    Behaviors.empty,
-    "ProductCatalogCluster",
-    config
-  )
-
-  for (i <- 0 to instancesPerNode) system.systemActorOf(ProductCatalog(new SearchService()), s"worker$i")
-
-  def terminate(): Unit =
-    system.terminate()
-}
-
 class ProductCatalogAkkaHttpServer extends ProductCatalogJsonSupport {
-  private val config = ConfigFactory.load()
+  private val config               = ConfigFactory.load()
   private val httpWorkersNodeCount = 3
 
   private implicit val system = ActorSystem[Nothing](
     Behaviors.empty,
     "ProductCatalogCluster",
     config
-      .getConfig("cluster-default")
   )
 //  private val workersPool =
 //    system.systemActorOf(Routers.pool(3)(ProductCatalog(new SearchService())), "productWorkersRouter")
 
-  implicit val scheduler = system.scheduler
+  implicit val scheduler        = system.scheduler
   implicit val executionContext = system.executionContext
 
-  val workersNodes: Seq[ProductCatalogWorkersNode] =
-    for (_ <- 0 to httpWorkersNodeCount) yield new ProductCatalogWorkersNode()
-  private val group: GroupRouter[ProductCatalog.Query] = Routers.group[ProductCatalog.Query](ProductCatalog.ProductCatalogServiceKey)
+  private val group: GroupRouter[ProductCatalog.Query] =
+    Routers.group[ProductCatalog.Query](ProductCatalog.ProductCatalogServiceKey)
   private val workers: ActorRef[ProductCatalog.Query] =
     system.systemActorOf(group, "clusterProductWorkerRouter")
 
@@ -92,8 +74,9 @@ class ProductCatalogAkkaHttpServer extends ProductCatalogJsonSupport {
       get {
         entity(as[ProductCatalogAkkaHttpServer.SearchRequest]) { searchRequest =>
           val items: Future[ProductCatalog.Ack] = workers
-            .ask((ref: ActorRef[ProductCatalog.Ack]) =>
-              ProductCatalog.GetItems(searchRequest.brand, searchRequest.productKeyWords, ref)
+            .ask(
+              (ref: ActorRef[ProductCatalog.Ack]) =>
+                ProductCatalog.GetItems(searchRequest.brand, searchRequest.productKeyWords, ref)
             )
 
           onSuccess(items) {
@@ -120,7 +103,8 @@ object ProductCatalogAkkaHttpServerApp extends App {
 }
 
 object ClusterNodeApp extends App {
-  private val config = ConfigFactory.load()
+  private val instancesPerNode = 3
+  private val config           = ConfigFactory.load()
 
   val system = ActorSystem[Nothing](
     Behaviors.empty,
@@ -129,6 +113,8 @@ object ClusterNodeApp extends App {
       .getConfig(Try(args(0)).getOrElse("seed-node1"))
       .withFallback(config)
   )
+
+  for (i <- 0 to instancesPerNode) system.systemActorOf(ProductCatalog(new SearchService()), s"worker$i")
 
   Await.ready(system.whenTerminated, Duration.Inf)
 }
