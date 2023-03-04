@@ -1,3 +1,2 @@
 # reactive-lab
-## Author
-Piotr Płoszczyca
+Sollutions for AGH Reactive Programming in Scala course.
