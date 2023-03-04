@@ -1,8 +1,8 @@
 package EShop.lab5
 
 import akka.Done
-import akka.actor.typed.receptionist.Receptionist
-import akka.actor.typed.scaladsl.AskPattern.{Askable, schedulerFromActorSystem}
+import akka.actor.typed.javadsl.{GroupRouter, Routers}
+import akka.actor.typed.scaladsl.AskPattern.Askable
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, ActorSystem}
 import akka.http.scaladsl.Http
@@ -16,6 +16,7 @@ import spray.json.{DefaultJsonProtocol, JsString, JsValue, JsonFormat, RootJsonF
 import java.net.URI
 import scala.concurrent.duration.{Duration, DurationInt}
 import scala.concurrent.{Await, Future}
+import scala.util.Try
 
 object ProductCatalogAkkaHttpServer {
   case class SearchRequest(brand: String, productKeyWords: List[String])
@@ -31,7 +32,7 @@ trait ProductCatalogJsonSupport extends SprayJsonSupport with DefaultJsonProtoco
     override def read(json: JsValue): URI =
       json match {
         case JsString(url) => new URI(url)
-        case _ => throw new RuntimeException("Parsing exception")
+        case _             => throw new RuntimeException("Parsing exception")
       }
   }
 
@@ -47,26 +48,35 @@ trait ProductCatalogJsonSupport extends SprayJsonSupport with DefaultJsonProtoco
 }
 
 class ProductCatalogAkkaHttpServer extends ProductCatalogJsonSupport {
-  private implicit val system: ActorSystem[Nothing] = ActorSystem[Nothing](Behaviors.empty, "ProductCatalog")
+  private val config               = ConfigFactory.load()
+  private val httpWorkersNodeCount = 3
 
-  implicit val timeout: Timeout = 3.seconds
+  private implicit val system = ActorSystem[Nothing](
+    Behaviors.empty,
+    "ProductCatalogCluster",
+    config
+  )
+//  private val workersPool =
+//    system.systemActorOf(Routers.pool(3)(ProductCatalog(new SearchService())), "productWorkersRouter")
+
+  implicit val scheduler        = system.scheduler
+  implicit val executionContext = system.executionContext
+
+  private val group: GroupRouter[ProductCatalog.Query] =
+    Routers.group[ProductCatalog.Query](ProductCatalog.ProductCatalogServiceKey)
+  private val workers: ActorRef[ProductCatalog.Query] =
+    system.systemActorOf(group, "clusterProductWorkerRouter")
+
+  implicit val timeout: Timeout = 5.seconds
 
   def routes(): Route = {
     path("search") {
       get {
         entity(as[ProductCatalogAkkaHttpServer.SearchRequest]) { searchRequest =>
-          val listings: Future[Receptionist.Listing] = system.receptionist
-            .ask((ref: ActorRef[Receptionist.Listing]) =>
-              Receptionist.Find(ProductCatalog.ProductCatalogServiceKey, ref)
-            )
-
-          val listingResult: Receptionist.Listing = Await.result(listings, Duration.Inf)
-
-          val items: Future[ProductCatalog.Ack] = listingResult
-            .allServiceInstances(ProductCatalog.ProductCatalogServiceKey)
-            .head
-            .ask((ref: ActorRef[ProductCatalog.Ack]) =>
-              ProductCatalog.GetItems(searchRequest.brand, searchRequest.productKeyWords, ref)
+          val items: Future[ProductCatalog.Ack] = workers
+            .ask(
+              (ref: ActorRef[ProductCatalog.Ack]) =>
+                ProductCatalog.GetItems(searchRequest.brand, searchRequest.productKeyWords, ref)
             )
 
           onSuccess(items) {
@@ -87,5 +97,24 @@ class ProductCatalogAkkaHttpServer extends ProductCatalogJsonSupport {
 }
 
 object ProductCatalogAkkaHttpServerApp extends App {
-  new ProductCatalogAkkaHttpServer().start(10001)
+  val port = Try(args(0).toInt).getOrElse(10001)
+
+  new ProductCatalogAkkaHttpServer().start(port)
+}
+
+object ClusterNodeApp extends App {
+  private val instancesPerNode = 3
+  private val config           = ConfigFactory.load()
+
+  val system = ActorSystem[Nothing](
+    Behaviors.empty,
+    "ProductCatalogCluster",
+    config
+      .getConfig(Try(args(0)).getOrElse("seed-node1"))
+      .withFallback(config)
+  )
+
+  for (i <- 0 to instancesPerNode) system.systemActorOf(ProductCatalog(new SearchService()), s"worker$i")
+
+  Await.ready(system.whenTerminated, Duration.Inf)
 }

@@ -48,10 +48,11 @@ class Checkout extends Actor {
       self ! ExpirePayment
     }
 
-  def receive: Receive = LoggingReceive { case StartCheckout =>
-    context become selectingDelivery(
-      timer = scheduleCheckoutTimer
-    )
+  def receive: Receive = LoggingReceive {
+    case StartCheckout =>
+      context become selectingDelivery(
+        timer = scheduleCheckoutTimer
+      )
   }
 
   def selectingDelivery(timer: Cancellable): Receive = LoggingReceive {
@@ -84,12 +85,14 @@ class Checkout extends Actor {
       context become cancelled
   }
 
-  def cancelled: Receive = LoggingReceive { case _ =>
-    doNothing()
+  def cancelled: Receive = LoggingReceive {
+    case _ =>
+      doNothing()
   }
 
-  def closed: Receive = LoggingReceive { case _ =>
-    doNothing()
+  def closed: Receive = LoggingReceive {
+    case _ =>
+      doNothing()
   }
 
   private def doNothing(): Unit = {}

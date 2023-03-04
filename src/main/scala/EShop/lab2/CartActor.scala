@@ -10,12 +10,12 @@ import scala.language.postfixOps
 object CartActor {
 
   sealed trait Command
-  case class AddItem(item: Any) extends Command
-  case class RemoveItem(item: Any) extends Command
-  case object ExpireCart extends Command
-  case object StartCheckout extends Command
+  case class AddItem(item: Any)        extends Command
+  case class RemoveItem(item: Any)     extends Command
+  case object ExpireCart               extends Command
+  case object StartCheckout            extends Command
   case object ConfirmCheckoutCancelled extends Command
-  case object ConfirmCheckoutClosed extends Command
+  case object ConfirmCheckoutClosed    extends Command
 
   sealed trait Event
   case class CheckoutStarted(checkoutRef: ActorRef) extends Event
@@ -29,7 +29,7 @@ class CartActor extends Actor {
 
   import CartActor._
 
-  private val log = Logging(context.system, this)
+  private val log                       = Logging(context.system, this)
   val cartTimerDuration: FiniteDuration = 5 seconds
 
   private def scheduleTimer: Cancellable =
@@ -69,18 +69,17 @@ class CartActor extends Actor {
       context become inCheckout(cart = cart)
   }
 
-  private def onRemoveItem(cart: Cart,
-                           item: Any,
-                           timer: Cancellable): Unit = {
+  private def onRemoveItem(cart: Cart, item: Any, timer: Cancellable): Unit = {
     val newCart = cart removeItem item
 
     if (isElementRemoved) {
       timer.cancel
       newCart.size match {
-        case size if size > 0 => context become nonEmpty(
-          cart = newCart,
-          timer = scheduleTimer,
-        )
+        case size if size > 0 =>
+          context become nonEmpty(
+            cart = newCart,
+            timer = scheduleTimer,
+          )
         case size if size == 0 => context become empty
       }
     }

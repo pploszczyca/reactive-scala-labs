@@ -60,14 +60,16 @@ class TypedCheckout(
     )(context.executionContext)
   }
 
-  def start: Behavior[TypedCheckout.Command] = Behaviors.receive((context, message) =>
-    message match {
-      case StartCheckout =>
-        selectingDelivery(
-          timer = scheduleCheckoutTimer(context = context)
-        )
-    }
-  )
+  def start: Behavior[TypedCheckout.Command] =
+    Behaviors.receive(
+      (context, message) =>
+        message match {
+          case StartCheckout =>
+            selectingDelivery(
+              timer = scheduleCheckoutTimer(context = context)
+            )
+      }
+    )
 
   def selectingDelivery(timer: Cancellable): Behavior[TypedCheckout.Command] = Behaviors.receiveMessage {
     case SelectDeliveryMethod(method) =>
@@ -79,21 +81,24 @@ class TypedCheckout(
   }
 
   def selectingPaymentMethod(timer: Cancellable): Behavior[TypedCheckout.Command] =
-    Behaviors.receive((context, message) =>
-      message match {
-        case SelectPayment(paymentMethod, orderManagerRef) =>
-          onSelectPayment(timer, context, paymentMethod, orderManagerRef)
+    Behaviors.receive(
+      (context, message) =>
+        message match {
+          case SelectPayment(paymentMethod, orderManagerRef) =>
+            onSelectPayment(timer, context, paymentMethod, orderManagerRef)
 
-        case CancelCheckout | ExpireCheckout =>
-          cartActor ! TypedCartActor.ConfirmCheckoutCancelled
-          cancelled
+          case CancelCheckout | ExpireCheckout =>
+            cartActor ! TypedCartActor.ConfirmCheckoutCancelled
+            cancelled
       }
     )
 
-  private def onSelectPayment(timer: Cancellable,
-                              context: ActorContext[Command],
-                              paymentMethod: String,
-                              orderManagerRef: ActorRef[OrderManager.Command]): Behavior[Command] = {
+  private def onSelectPayment(
+    timer: Cancellable,
+    context: ActorContext[Command],
+    paymentMethod: String,
+    orderManagerRef: ActorRef[OrderManager.Command]
+  ): Behavior[Command] = {
     timer.cancel
     val payment = new Payment(
       method = paymentMethod,

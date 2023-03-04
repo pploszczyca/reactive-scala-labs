@@ -41,14 +41,14 @@ class PersistentCheckout {
       case WaitingForStart =>
         command match {
           case StartCheckout => Effect.persist(CheckoutStarted)
-          case _ => Effect.unhandled
+          case _             => Effect.unhandled
         }
 
       case SelectingDelivery(_) =>
         command match {
-          case SelectDeliveryMethod(method) => Effect.persist(DeliveryMethodSelected(method))
+          case SelectDeliveryMethod(method)    => Effect.persist(DeliveryMethodSelected(method))
           case CancelCheckout | ExpireCheckout => Effect.persist(CheckoutCancelled)
-          case _ => Effect.unhandled
+          case _                               => Effect.unhandled
         }
 
       case SelectingPaymentMethod(_) =>
@@ -68,14 +68,14 @@ class PersistentCheckout {
               }
 
           case CancelCheckout | ExpireCheckout => Effect.persist(CheckoutCancelled)
-          case _ => Effect.unhandled
+          case _                               => Effect.unhandled
         }
 
       case ProcessingPayment(_) =>
         command match {
           case TypedCheckout.ConfirmPaymentReceived => Effect.persist(CheckOutClosed)
-          case CancelCheckout | ExpireCheckout => Effect.persist(CheckoutCancelled)
-          case _ => Effect.unhandled
+          case CancelCheckout | ExpireCheckout      => Effect.persist(CheckoutCancelled)
+          case _                                    => Effect.unhandled
         }
 
       case Cancelled =>
@@ -91,10 +91,10 @@ class PersistentCheckout {
       case CheckoutStarted           => SelectingDelivery(timer = schedule(context))
       case DeliveryMethodSelected(_) => SelectingPaymentMethod(timer = state.timerOpt.get)
       case PaymentStarted(_)         => ProcessingPayment(timer = state.timerOpt.get)
-      case CheckOutClosed            =>
+      case CheckOutClosed =>
         state.timerOpt.foreach(_.cancel())
         Closed
-      case CheckoutCancelled         => Cancelled
+      case CheckoutCancelled => Cancelled
     }
   }
 }
